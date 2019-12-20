@@ -978,8 +978,8 @@ contains
        if (h2osoi_liq_tot(c) < h2osoi_liq_at_threshold) then
           !deficit(c) = h2osoi_liq_target_tot(c) - h2osoi_liq_tot(c)
           
-          ! Y. Cheng, March 11th, 2019.
-          deficit(c) = h2osoi_liq_at_threshold - h2osoi_liq_tot(c)  ! seems error here
+          ! Y. Cheng, March 11th, 2019. it seems a bug here
+          deficit(c) = h2osoi_liq_at_threshold - h2osoi_liq_tot(c)
           ! deficit shouldn't be less than 0: if it is, that implies that the
           ! irrigation target is less than the irrigation threshold, which is not
           ! supposed to happen
