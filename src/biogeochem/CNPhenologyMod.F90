@@ -315,7 +315,7 @@ contains
 
        call CNOnsetGrowth(num_soilp, filter_soilp, &
             cnveg_state_inst, &
-            cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst)! 
+            cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst) 
 
        call CNOffsetLitterfall(num_soilp, filter_soilp, &
             cnveg_state_inst, cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst)

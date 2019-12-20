@@ -36,11 +36,13 @@ contains
     ! vegetation structure (LAI, SAI, height)
     !
     ! !USES:
+    use clm_time_manager , only : get_curr_calday
     use pftconMod        , only : noveg, nc3crop, nc3irrig, nbrdlf_evr_shrub, nbrdlf_dcd_brl_shrub
     use pftconMod        , only : npcropmin 
     use pftconMod        , only : ntmp_corn, nirrig_tmp_corn
     use pftconMod        , only : ntrp_corn, nirrig_trp_corn
     use pftconMod        , only : nsugarcane, nirrig_sugarcane
+    use pftconMod        , only : nmiscanthus, nirrig_miscanthus, nswitchgrass, nirrig_switchgrass
     use pftconMod        , only : pftcon
     use clm_varctl       , only : spinup_state
     use clm_time_manager , only : get_rad_step_size
@@ -72,6 +74,7 @@ contains
     real(r8) :: tsai_min   ! PATCH derived minimum tsai
     real(r8) :: tsai_alpha ! monthly decay rate of tsai
     real(r8) :: dt         ! radiation time step (sec)
+    integer jday      ! julian day of the year
 
     real(r8), parameter :: dtsmonth = 2592000._r8 ! number of seconds in a 30 day month (60x60x24x30)
     !-----------------------------------------------------------------------
@@ -135,6 +138,8 @@ contains
 
       ! convert from stems/ha -> stems/m^2
       stocking = stocking / 10000._r8
+      
+      jday    = get_curr_calday()
 
       ! patch loop
       do fp = 1,num_soilp
@@ -174,6 +179,8 @@ contains
             end if
             tsai_min = tsai_min * 0.5_r8
             tsai(p) = max(tsai_alpha*tsai_old+max(tlai_old-tlai(p),0._r8),tsai_min)
+            
+            !print *,"tsai in CNVegStrucUpdate check0:",p,ivt(p),nc3crop,jday
 
             if (woody(ivt(p)) == 1._r8) then
 
@@ -230,9 +237,12 @@ contains
 
                if (tlai(p) >= laimx(ivt(p))) peaklai(p) = 1 ! used in CNAllocation
 
+			   ! Y. Cheng, Feb 27th, 2019
                if (ivt(p) == ntmp_corn .or. ivt(p) == nirrig_tmp_corn .or. &
                    ivt(p) == ntrp_corn .or. ivt(p) == nirrig_trp_corn .or. &
-                   ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane) then
+                   ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane .or. &
+                   ivt(p) == nmiscanthus .or. ivt(p) == nirrig_miscanthus .or. &
+                   ivt(p) == nswitchgrass .or. ivt(p) == nirrig_switchgrass) then
                   tsai(p) = 0.1_r8 * tlai(p)
                else
                   tsai(p) = 0.2_r8 * tlai(p)
@@ -244,14 +254,13 @@ contains
                   htmx(p) = 0._r8
                   peaklai(p) = 0
                end if
-               !if (harvdate(p) < 999 .and. tlai(p) > 0._r8) write(iulog,*) 'CNVegStructUpdate: tlai>0 after harvest!' ! remove after initial debugging?
-
+               
                ! canopy top and bottom heights
                htop(p) = ztopmx(ivt(p)) * (min(tlai(p)/(laimx(ivt(p))-1._r8),1._r8))**2
                htmx(p) = max(htmx(p), htop(p))
                htop(p) = max(0.05_r8, max(htmx(p),htop(p)))
                hbot(p) = 0.02_r8
-
+               
             else ! generic crops and ...
 
                ! grasses
@@ -276,6 +285,8 @@ contains
             hbot(p) = 0._r8
 
          end if
+         
+         !print *, "tsai in CNVegStrucUpdate check after:",p,ivt(p),tlai(p),tsai(p),laimx(ivt(p)),jday,htop(p),peaklai(p)
 
          ! adjust lai and sai for burying by snow. 
          ! snow burial fraction for short vegetation (e.g. grasses) as in
