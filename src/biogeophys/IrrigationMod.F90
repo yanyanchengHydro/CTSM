@@ -1539,7 +1539,9 @@ contains
             this%params%irrig_threshold_fraction * &
             (h2osoi_liq_target_tot(c) - h2osoi_liq_wilting_point_tot(c))
        if (h2osoi_liq_tot(c) < h2osoi_liq_at_threshold) then
-          deficit(c) = h2osoi_liq_target_tot(c) - h2osoi_liq_tot(c)
+          ! Y. Cheng
+          deficit(c) = h2osoi_liq_at_threshold - h2osoi_liq_tot(c)
+
           ! deficit shouldn't be less than 0: if it is, that implies that the
           ! irrigation target is less than the irrigation threshold, which is not
           ! supposed to happen
