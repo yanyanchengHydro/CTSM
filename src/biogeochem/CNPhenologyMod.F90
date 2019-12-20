@@ -14,7 +14,7 @@ module CNPhenologyMod
   use shr_log_mod                     , only : errMsg => shr_log_errMsg
   use shr_sys_mod                     , only : shr_sys_flush
   use decompMod                       , only : bounds_type
-  use clm_varpar                      , only : maxveg, nlevdecomp_full
+  use clm_varpar                      , only : numpft, nlevdecomp_full
   use clm_varctl                      , only : iulog, use_cndv
   use clm_varcon                      , only : tfrz
   use abortutils                      , only : endrun
@@ -29,8 +29,7 @@ module CNPhenologyMod
   use pftconMod                       , only : pftcon
   use SoilStateType                   , only : soilstate_type
   use TemperatureType                 , only : temperature_type
-  use WaterDiagnosticBulkType                  , only : waterdiagnosticbulk_type
-  use Wateratm2lndBulkType                  , only : wateratm2lndbulk_type
+  use WaterstateType                  , only : waterstate_type
   use ColumnType                      , only : col                
   use GridcellType                    , only : grc                
   use PatchType                       , only : patch   
@@ -241,7 +240,7 @@ contains
   !-----------------------------------------------------------------------
   subroutine CNPhenology (bounds, num_soilc, filter_soilc, num_soilp, &
        filter_soilp, num_pcropp, filter_pcropp, &
-       doalb, waterdiagnosticbulk_inst, wateratm2lndbulk_inst, temperature_inst, atm2lnd_inst, crop_inst, &
+       doalb, waterstate_inst, temperature_inst, atm2lnd_inst, crop_inst, &
        canopystate_inst, soilstate_inst, dgvs_inst, &
        cnveg_state_inst, cnveg_carbonstate_inst, cnveg_carbonflux_inst,    &
        cnveg_nitrogenstate_inst, cnveg_nitrogenflux_inst, &
@@ -263,8 +262,7 @@ contains
     integer                        , intent(in)    :: num_pcropp      ! number of prog. crop patches in filter
     integer                        , intent(in)    :: filter_pcropp(:)! filter for prognostic crop patches
     logical                        , intent(in)    :: doalb           ! true if time for sfc albedo calc
-    type(waterdiagnosticbulk_type)          , intent(in)    :: waterdiagnosticbulk_inst
-    type(wateratm2lndbulk_type)          , intent(in)    :: wateratm2lndbulk_inst
+    type(waterstate_type)          , intent(in)    :: waterstate_inst
     type(temperature_type)         , intent(inout) :: temperature_inst
     type(atm2lnd_type)             , intent(in)    :: atm2lnd_inst
     type(crop_type)                , intent(inout) :: crop_inst
@@ -283,8 +281,8 @@ contains
     integer                        , intent(in)    :: phase
     !-----------------------------------------------------------------------
 
-    SHR_ASSERT_ALL_FL((ubound(leaf_prof_patch)   == (/bounds%endp,nlevdecomp_full/)), sourcefile, __LINE__)
-    SHR_ASSERT_ALL_FL((ubound(froot_prof_patch)  == (/bounds%endp,nlevdecomp_full/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL((ubound(leaf_prof_patch)   == (/bounds%endp,nlevdecomp_full/)), errMsg(sourcefile, __LINE__))
+    SHR_ASSERT_ALL((ubound(froot_prof_patch)  == (/bounds%endp,nlevdecomp_full/)), errMsg(sourcefile, __LINE__))
 
     ! each of the following phenology type routines includes a filter
     ! to operate only on the relevant patches
@@ -302,12 +300,12 @@ contains
             cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst)
 
        call CNStressDecidPhenology(num_soilp, filter_soilp,   &
-            soilstate_inst, temperature_inst, atm2lnd_inst, wateratm2lndbulk_inst, cnveg_state_inst, &
+            soilstate_inst, temperature_inst, atm2lnd_inst, cnveg_state_inst, &
             cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst)
 
        if (doalb .and. num_pcropp > 0 ) then
           call CropPhenology(num_pcropp, filter_pcropp, &
-               waterdiagnosticbulk_inst, temperature_inst, crop_inst, canopystate_inst, cnveg_state_inst, &
+               waterstate_inst, temperature_inst, crop_inst, canopystate_inst, cnveg_state_inst, &
                cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst, &
                c13_cnveg_carbonstate_inst, c14_cnveg_carbonstate_inst)
        end if
@@ -321,7 +319,7 @@ contains
 
        call CNOffsetLitterfall(num_soilp, filter_soilp, &
             cnveg_state_inst, cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst)
-
+             
        call CNBackgroundLitterfall(num_soilp, filter_soilp, &
             cnveg_state_inst, cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst)
    
@@ -351,7 +349,7 @@ contains
     ! initialized, and after pftcon file is read in.
     !
     ! !USES:
-    use clm_time_manager, only: get_step_size_real
+    use clm_time_manager, only: get_step_size
     use clm_varctl      , only: use_crop
     use clm_varcon      , only: secspday
     !
@@ -362,7 +360,7 @@ contains
     !
     ! Get time-step and what fraction of a day it is
     !
-    dt      = get_step_size_real()
+    dt      = real( get_step_size(), r8 )
     fracday = dt/secspday
 
     ! set constants for CNSeasonDecidPhenology 
@@ -974,7 +972,7 @@ contains
 
   !-----------------------------------------------------------------------
   subroutine CNStressDecidPhenology (num_soilp, filter_soilp , &
-       soilstate_inst, temperature_inst, atm2lnd_inst, wateratm2lndbulk_inst, cnveg_state_inst, &
+       soilstate_inst, temperature_inst, atm2lnd_inst, cnveg_state_inst, &
        cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, &
        cnveg_carbonflux_inst, cnveg_nitrogenflux_inst)
     !
@@ -1002,7 +1000,6 @@ contains
     type(soilstate_type)           , intent(in)    :: soilstate_inst
     type(temperature_type)         , intent(in)    :: temperature_inst
     type(atm2lnd_type)             , intent(in)    :: atm2lnd_inst
-    type(wateratm2lndbulk_type)             , intent(in)    :: wateratm2lndbulk_inst
     type(cnveg_state_type)         , intent(inout) :: cnveg_state_inst
     type(cnveg_carbonstate_type)   , intent(inout) :: cnveg_carbonstate_inst
     type(cnveg_nitrogenstate_type) , intent(inout) :: cnveg_nitrogenstate_inst
@@ -1025,7 +1022,7 @@ contains
          ivt                                 =>    patch%itype                                                   , & ! Input:  [integer   (:)   ]  patch vegetation type                                
          dayl                                =>    grc%dayl                                                    , & ! Input:  [real(r8)  (:)   ]  daylength (s)
          
-         prec10                              => wateratm2lndbulk_inst%prec10_patch                                     , & ! Input:  [real(r8) (:)     ]  10-day running mean of tot. precipitation
+         prec10                              => atm2lnd_inst%prec10_patch                                     , & ! Input:  [real(r8) (:)     ]  10-day running mean of tot. precipitation
          leaf_long                           =>    pftcon%leaf_long                                            , & ! Input:  leaf longevity (yrs)                              
          woody                               =>    pftcon%woody                                                , & ! Input:  binary flag for woody lifeform (1=woody, 0=not woody)
          stress_decid                        =>    pftcon%stress_decid                                         , & ! Input:  binary flag for stress-deciduous leaf habit (0 or 1)
@@ -1421,7 +1418,7 @@ contains
 
   !-----------------------------------------------------------------------
   subroutine CropPhenology(num_pcropp, filter_pcropp                     , &
-       waterdiagnosticbulk_inst, temperature_inst, crop_inst, canopystate_inst, cnveg_state_inst , &
+       waterstate_inst, temperature_inst, crop_inst, canopystate_inst, cnveg_state_inst , &
        cnveg_carbonstate_inst, cnveg_nitrogenstate_inst, cnveg_carbonflux_inst, cnveg_nitrogenflux_inst,&
        c13_cnveg_carbonstate_inst, c14_cnveg_carbonstate_inst)
 
@@ -1436,6 +1433,7 @@ contains
     use pftconMod        , only : ntrp_corn, nsugarcane, ntrp_soybean, ncotton, nrice
     use pftconMod        , only : nirrig_trp_corn, nirrig_sugarcane, nirrig_trp_soybean
     use pftconMod        , only : nirrig_cotton, nirrig_rice
+    use pftconMod        , only : nmiscanthus, nirrig_miscanthus, nswitchgrass, nirrig_switchgrass
     use clm_varcon       , only : spval, secspday
     use clm_varctl       , only : use_fertilizer 
     use clm_varctl       , only : use_c13, use_c14
@@ -1444,7 +1442,7 @@ contains
     ! !ARGUMENTS:
     integer                        , intent(in)    :: num_pcropp       ! number of prog crop patches in filter
     integer                        , intent(in)    :: filter_pcropp(:) ! filter for prognostic crop patches
-    type(waterdiagnosticbulk_type)          , intent(in)    :: waterdiagnosticbulk_inst
+    type(waterstate_type)          , intent(in)    :: waterstate_inst
     type(temperature_type)         , intent(in)    :: temperature_inst
     type(crop_type)                , intent(inout) :: crop_inst
     type(canopystate_type)         , intent(in)    :: canopystate_inst
@@ -1585,7 +1583,7 @@ contains
                !           else ! not possible to have croplive and ivt==cornORsoy? (slevis)
             end if
 
-         end if
+         end if !if ( jday == jdayyrstart(h) .and. mcsec == 0 )
 
          if ( (.not. croplive(p)) .and. (.not. cropplant(p)) ) then
 
@@ -1728,12 +1726,17 @@ contains
                        ivt(p) == ntrp_soybean .or. ivt(p) == nirrig_trp_soybean) then
                      gddmaturity(p) = min(gdd1020(p), hybgdd(ivt(p)))
                   end if
+                  
+                  ! Y.  Feb 27th,2019
                   if (ivt(p) == ntmp_corn .or. ivt(p) == nirrig_tmp_corn .or. &
                       ivt(p) == ntrp_corn .or. ivt(p) == nirrig_trp_corn .or. &
-                      ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane) then
+                      ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane .or. &
+                      ivt(p) == nmiscanthus .or. ivt(p) == nirrig_miscanthus .or. &
+                      ivt(p) == nswitchgrass .or. ivt(p) == nirrig_switchgrass) then
                      gddmaturity(p) = max(950._r8, min(gdd820(p)*0.85_r8, hybgdd(ivt(p))))
                      gddmaturity(p) = max(950._r8, min(gddmaturity(p)+150._r8, 1850._r8))
                   end if
+                  
                   if (ivt(p) == nswheat .or. ivt(p) == nirrig_swheat .or. &
                       ivt(p) == ncotton .or. ivt(p) == nirrig_cotton .or. &
                       ivt(p) == nrice   .or. ivt(p) == nirrig_rice) then
@@ -1777,11 +1780,16 @@ contains
                       ivt(p) == ntrp_soybean .or. ivt(p) == nirrig_trp_soybean) then
                      gddmaturity(p) = min(gdd1020(p), hybgdd(ivt(p)))
                   end if
+                  
+                  ! Y. Cheng Feb 27th,2019
                   if (ivt(p) == ntmp_corn .or. ivt(p) == nirrig_tmp_corn .or. &
                       ivt(p) == ntrp_corn .or. ivt(p) == nirrig_trp_corn .or. &
-                      ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane) then
+                      ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane .or. &
+                      ivt(p) == nmiscanthus .or. ivt(p) == nirrig_miscanthus .or. &
+                      ivt(p) == nswitchgrass .or. ivt(p) == nirrig_switchgrass) then
                      gddmaturity(p) = max(950._r8, min(gdd820(p)*0.85_r8, hybgdd(ivt(p))))
                   end if
+                  
                   if (ivt(p) == nswheat .or. ivt(p) == nirrig_swheat .or. &
                       ivt(p) == ncotton .or. ivt(p) == nirrig_cotton .or. &
                       ivt(p) == nrice   .or. ivt(p) == nirrig_rice) then
@@ -1816,6 +1824,7 @@ contains
                   gddmaturity(p) = 0._r8
                end if
             end if ! crop patch distinction
+            
 
             ! crop phenology (gdd thresholds) controlled by gdd needed for
             ! maturity (physiological) which is based on the average gdd
@@ -1838,9 +1847,12 @@ contains
             ! calculate linear relationship between huigrain fraction and relative
             ! maturity rating for maize
 
+            ! Y. Cheng Feb 27th,2019
             if (ivt(p) == ntmp_corn .or. ivt(p) == nirrig_tmp_corn .or. &
                 ivt(p) == ntrp_corn .or. ivt(p) == nirrig_trp_corn .or. &
-                ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane) then
+                ivt(p) == nsugarcane .or. ivt(p) == nirrig_sugarcane .or. &
+                ivt(p) == nmiscanthus .or. ivt(p) == nirrig_miscanthus .or. &
+                ivt(p) == nswitchgrass .or. ivt(p) == nirrig_switchgrass) then
                ! the following estimation of crmcorn from gddmaturity is based on a linear
                ! regression using data from Pioneer-brand corn hybrids (Kucharik, 2003,
                ! Earth Interactions 7:1-33: fig. 2)
@@ -1857,7 +1869,7 @@ contains
                huigrain(p) = grnfill(ivt(p)) * gddmaturity(p) ! al. 1999
             end if
 
-         end if ! crop not live nor planted
+         end if ! crop not live nor planted, if ( (.not. croplive(p)) .and. (.not. cropplant(p)) )
 
          ! ----------------------------------
          ! from AgroIBIS subroutine phenocrop
@@ -1912,7 +1924,7 @@ contains
             if (t_ref2m_min(p) < 1.e30_r8 .and. vf(p) /= 1._r8 .and. &
                (ivt(p) == nwwheat .or. ivt(p) == nirrig_wwheat)) then
                call vernalization(p, &
-                    canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, cnveg_state_inst, &
+                    canopystate_inst, temperature_inst, waterstate_inst, cnveg_state_inst, &
                     crop_inst)
             end if
 
@@ -1947,6 +1959,13 @@ contains
                     else
                        fert(p) = 0._r8
                     end if
+                    
+                    ! Y. Cheng, Feb 27th 2019, no fert for MXG
+                    if (ivt(p)==71 .or. ivt(p)==72) then
+                       fert_counter(p)=0._r8
+                       fert(p) = 0._r8
+                    end if
+                    
                else
                   ! this ensures no re-entry to onset of phase2
                   ! b/c onset_counter(p) = onset_counter(p) - dt
@@ -1961,8 +1980,9 @@ contains
                ! if onset and harvest needed to last longer than one timestep
                ! the onset_counter would change from dt and you'd need to make
                ! changes to the offset subroutine below
-
-            else if (hui(p) >= gddmaturity(p) .or. idpp >= mxmat(ivt(p))) then
+            !else if (hui(p) >= gddmaturity(p) .or. idpp >= mxmat(ivt(p))) then
+            ! Y. Cheng
+            else if (idpp >= mxmat(ivt(p))) then
                if (harvdate(p) >= NOT_Harvested) harvdate(p) = jday
                croplive(p) = .false.     ! no re-entry in greater if-block
                cphase(p) = 4._r8
@@ -2053,8 +2073,8 @@ contains
 
     allocate( inhemi(bounds%begp:bounds%endp) )
 
-    allocate( minplantjday(0:maxveg,inSH)) ! minimum planting julian day
-    allocate( maxplantjday(0:maxveg,inSH)) ! minimum planting julian day
+    allocate( minplantjday(0:numpft,inSH)) ! minimum planting julian day
+    allocate( maxplantjday(0:numpft,inSH)) ! minimum planting julian day
 
     ! Julian day for the start of the year (mid-winter)
     jdayyrstart(inNH) =   1
@@ -2063,7 +2083,8 @@ contains
     ! Convert planting dates into julian day
     minplantjday(:,:) = huge(1)
     maxplantjday(:,:) = huge(1)
-    do n = npcropmin, npcropmax
+    
+    do n = npcropmin, npcropmax       
        if (pftcon%is_pft_known_to_model(n)) then
           minplantjday(n, inNH) = int( get_calday( pftcon%mnNHplantdate(n), 0 ) )
           maxplantjday(n, inNH) = int( get_calday( pftcon%mxNHplantdate(n), 0 ) )
@@ -2071,6 +2092,7 @@ contains
           minplantjday(n, inSH) = int( get_calday( pftcon%mnSHplantdate(n), 0 ) )
           maxplantjday(n, inSH) = int( get_calday( pftcon%mxSHplantdate(n), 0 ) )
        end if
+       
     end do
 
     ! Figure out what hemisphere each PATCH is in
@@ -2101,7 +2123,7 @@ contains
 
   !-----------------------------------------------------------------------
   subroutine vernalization(p, &
-       canopystate_inst, temperature_inst, waterdiagnosticbulk_inst, cnveg_state_inst, crop_inst)
+       canopystate_inst, temperature_inst, waterstate_inst, cnveg_state_inst, crop_inst)
     !
     ! !DESCRIPTION:
     !
@@ -2117,7 +2139,7 @@ contains
     integer                , intent(in)    :: p    ! PATCH index running over
     type(canopystate_type) , intent(in)    :: canopystate_inst
     type(temperature_type) , intent(in)    :: temperature_inst
-    type(waterdiagnosticbulk_type)  , intent(in)    :: waterdiagnosticbulk_inst
+    type(waterstate_type)  , intent(in)    :: waterstate_inst
     type(cnveg_state_type) , intent(inout) :: cnveg_state_inst
     type(crop_type)        , intent(inout) :: crop_inst
     !
@@ -2135,7 +2157,7 @@ contains
          t_ref2m_min => temperature_inst%t_ref2m_min_patch , & ! Input:  [real(r8) (:) ] daily minimum of average 2 m height surface air temperature (K)
          t_ref2m_max => temperature_inst%t_ref2m_max_patch , & ! Input:  [real(r8) (:) ] daily maximum of average 2 m height surface air temperature (K)
 
-         snow_depth  => waterdiagnosticbulk_inst%snow_depth_col     , & ! Input:  [real(r8) (:) ]  snow height (m)                                   
+         snow_depth  => waterstate_inst%snow_depth_col     , & ! Input:  [real(r8) (:) ]  snow height (m)                                   
 
          hdidx       => cnveg_state_inst%hdidx_patch       , & ! Output: [real(r8) (:) ]  cold hardening index?                             
          cumvd       => cnveg_state_inst%cumvd_patch       , & ! Output: [real(r8) (:) ]  cumulative vernalization d?ependence?             
@@ -2374,7 +2396,9 @@ contains
     ! !USES:
     use pftconMod        , only : npcropmin
     use CNSharedParamsMod, only : use_fun
-    use clm_varctl       , only : CNratio_floating    
+    use clm_varctl       , only : CNratio_floating  
+    use clm_time_manager , only : get_curr_date, get_curr_calday, get_days_per_year, get_rad_step_size
+      
     !
     ! !ARGUMENTS:
     integer                       , intent(in)    :: num_soilp       ! number of soil patches in filter
@@ -2392,6 +2416,7 @@ contains
     real(r8):: denom        ! temporary variable for divisor
     real(r8) :: ntovr_leaf  
     real(r8) :: fr_leafn_to_litter ! fraction of the nitrogen turnover that goes to litter; remaining fraction is retranslocated
+    integer jday      ! julian day of the year
     !-----------------------------------------------------------------------
 
     associate(                                                                           & 
@@ -2444,16 +2469,24 @@ contains
       ! The litterfall transfer rate starts at 0.0 and increases linearly
       ! over time, with displayed growth going to 0.0 on the last day of litterfall
       
+      jday    = get_curr_calday()
+      
       do fp = 1,num_soilp
          p = filter_soilp(fp)
-
          ! only calculate fluxes during offset period
          if (offset_flag(p) == 1._r8) then
-
             if (offset_counter(p) == dt) then
                t1 = 1.0_r8 / dt
-               leafc_to_litter(p)  = t1 * leafc(p)  + cpool_to_leafc(p)
+!                leafc_to_litter(p)  = t1 * leafc(p)  + cpool_to_leafc(p)
                frootc_to_litter(p) = t1 * frootc(p) + cpool_to_frootc(p)
+               
+               ! Y. Cheng, Feb 27th, 2019
+               if (ivt(p)==71 .or. ivt(p)==73) then
+               	   leafc_to_litter(p)  = t1 * leafc(p)*0.3  + cpool_to_leafc(p)
+               	   grainc_to_food(p) =grainc_to_food(p)+ t1 * leafc(p) * 0.7 
+               	   grainn_to_food(p) =grainn_to_food(p)+ t1 * leafn(p) * 0.7
+               end if
+               
                ! this assumes that offset_counter == dt for crops
                ! if this were ever changed, we'd need to add code to the "else"
                if (ivt(p) >= npcropmin) then
@@ -2464,17 +2497,22 @@ contains
                   grainc_to_seed(p) = t1 * min(-cropseedc_deficit(p), grainc(p))
                   grainn_to_seed(p) = t1 * min(-cropseedn_deficit(p), grainn(p))
                   ! Send the remaining grain to the food product pool
-                  grainc_to_food(p) = t1 * grainc(p)  + cpool_to_grainc(p) - grainc_to_seed(p)
-                  grainn_to_food(p) = t1 * grainn(p)  + npool_to_grainn(p) - grainn_to_seed(p)
+                                    
+                  grainc_to_food(p) = grainc_to_food(p) + t1 * grainc(p)  + cpool_to_grainc(p) - grainc_to_seed(p)
+                  grainn_to_food(p) = grainc_to_food(p) + t1 * grainn(p)  + npool_to_grainn(p) - grainn_to_seed(p)
 
-                  livestemc_to_litter(p) = t1 * livestemc(p)  + cpool_to_livestemc(p)
-               end if
+
+                  ! Original code
+                  livestemc_to_litter(p) = t1 * livestemc(p) + cpool_to_livestemc(p)
+ 
+               end if ! (ivt(p) >= npcropmin)
+               
             else
                t1 = dt * 2.0_r8 / (offset_counter(p) * offset_counter(p))
                leafc_to_litter(p)  = prev_leafc_to_litter(p)  + t1*(leafc(p)  - prev_leafc_to_litter(p)*offset_counter(p))
                frootc_to_litter(p) = prev_frootc_to_litter(p) + t1*(frootc(p) - prev_frootc_to_litter(p)*offset_counter(p))
-
-            end if
+     
+          end if
             
             if ( use_fun ) then
                if(leafc_to_litter(p)*dt.gt.leafc(p))then
@@ -2523,11 +2561,11 @@ contains
             ! calculate fine root N litterfall (no retranslocation of fine root N)
             frootn_to_litter(p) = frootc_to_litter(p) / frootcn(ivt(p))
             
-            if (CNratio_floating .eqv. .true.) then    
-               if (leafc(p) == 0.0_r8) then    
+            if (CNratio_floating .eqv. .true.) then 
+               if (leafc(p) == 0.0_r8) then  
                   ntovr_leaf = 0.0_r8    
                else    
-                  ntovr_leaf = leafc_to_litter(p) * (leafn(p) / leafc(p))   
+                  ntovr_leaf = leafc_to_litter(p) * (leafn(p) / leafc(p)) 
                end if   
            
                leafn_to_litter(p)   = fr_leafn_to_litter * ntovr_leaf
@@ -2555,9 +2593,21 @@ contains
             ! save the current litterfall fluxes
             prev_leafc_to_litter(p)  = leafc_to_litter(p)
             prev_frootc_to_litter(p) = frootc_to_litter(p)
-
-         end if ! end if offset period
-
+   
+   
+        ! Y. Cheng, Feb 27th, 2019
+         if (ivt(p)==71 .or. ivt(p)==73) then
+			 if (offset_counter(p) == dt) then
+				   grainc(p) = grainc(p) + leafc(p)*0.7
+				   leafc(p)  = leafc(p) * 0.3
+				   grainn(p) = grainn(p) + leafn(p)*0.7
+				   leafn(p)  = leafn(p) * 0.3
+			 end if
+         end if 
+   
+   
+         end if ! end if offset period, original code
+         
       end do ! end patch loop
 
     end associate 
@@ -2885,8 +2935,8 @@ contains
     integer :: fc,c,pi,p,j       ! indices
     !-----------------------------------------------------------------------
 
-    SHR_ASSERT_ALL_FL((ubound(leaf_prof_patch)   == (/bounds%endp,nlevdecomp_full/)), sourcefile, __LINE__)
-    SHR_ASSERT_ALL_FL((ubound(froot_prof_patch)  == (/bounds%endp,nlevdecomp_full/)), sourcefile, __LINE__)
+    SHR_ASSERT_ALL((ubound(leaf_prof_patch)   == (/bounds%endp,nlevdecomp_full/)), errMsg(sourcefile, __LINE__))
+    SHR_ASSERT_ALL((ubound(froot_prof_patch)  == (/bounds%endp,nlevdecomp_full/)), errMsg(sourcefile, __LINE__))
 
     associate(                                                                                & 
          leaf_prof                 => leaf_prof_patch                                       , & ! Input:  [real(r8) (:,:) ]  (1/m) profile of leaves                         
