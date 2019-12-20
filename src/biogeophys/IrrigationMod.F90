@@ -546,7 +546,7 @@ contains
     this%qflx_irrig_demand_patch(begp:endp) = spval
     call hist_addfld1d (fname='QIRRIG_DEMAND', units='mm/s', &
          avgflag='A', long_name='irrigation demand', &
-         ptr_patch=this%qflx_irrig_demand_patch, default='inactive')
+         ptr_patch=this%qflx_irrig_demand_patch)
 
   end subroutine IrrigationInitHistory
 
@@ -976,7 +976,10 @@ contains
             this%params%irrig_threshold_fraction * &
             (h2osoi_liq_target_tot(c) - h2osoi_liq_wilting_point_tot(c))
        if (h2osoi_liq_tot(c) < h2osoi_liq_at_threshold) then
-          deficit(c) = h2osoi_liq_target_tot(c) - h2osoi_liq_tot(c)
+          !deficit(c) = h2osoi_liq_target_tot(c) - h2osoi_liq_tot(c)
+          
+          ! Y. Cheng, March 11th, 2019.
+          deficit(c) = h2osoi_liq_at_threshold - h2osoi_liq_tot(c)  ! seems error here
           ! deficit shouldn't be less than 0: if it is, that implies that the
           ! irrigation target is less than the irrigation threshold, which is not
           ! supposed to happen
@@ -1028,6 +1031,14 @@ contains
           ! in this case, we'll irrigate by 0 for the given number of time steps
           this%n_irrig_steps_left_patch(p) = this%irrig_nsteps_per_day
        end if
+       
+       ! Y. Cheng, Nov 19th, 2018, turn off irrigation for bioenergy crop
+       if (patch%itype(p) == 71 .or. patch%itype(p)==73 .or. patch%itype(p) == 72 .or. patch%itype(p) == 74) then
+          this%irrig_rate_patch(p) = 0._r8
+          this%irrig_rate_demand_patch(p) =0._r8
+          this%n_irrig_steps_left_patch(p) =0._r8
+       end if
+              
     end do
 
   end subroutine CalcIrrigationNeeded
