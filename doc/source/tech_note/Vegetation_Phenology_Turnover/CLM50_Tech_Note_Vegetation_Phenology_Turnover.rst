@@ -152,9 +152,9 @@ where superscripts *n* and *n-1* refer to fluxes on the current and
 previous timesteps, respectively. The rate coefficient :math:`{r}_{xfer\_off}` varies with time to produce a linearly
 increasing litterfall rate throughout the offset period, and the special
 case for fluxes in the final litterfall timestep
-(:math:`{t}_{offset}` = :math:`\Delta t`\ ) ensures that :math:`(1-biofuel\_harvfrac)` of the
+(:math:`{t}_{offset}` = :math:`\Delta t`\ ) ensures that the fraction (:math:`(1-biofuel\_harvfrac)`) of the
 displayed growth is sent to the litter pools for deciduous plant types. 
-The :math:`biofuel\_harvfrac` is the harvested fraction of leaf & livestem for biofuels. It is only non-zero for prognostic crops.
+The :math:`biofuel\_harvfrac` is the harvested fraction of leaf/livestem for biofuels. It is only non-zero for prognostic crops.
 
 Corresponding nitrogen fluxes during litterfall take into account retranslocation of nitrogen out of the displayed leaf pool prior to
 litterfall (:math:`{NF}_{leaf,retrans}`, gN m\ :sup:`-2` s\ :sup:`-1`). Retranslocation of nitrogen out of fine roots is
