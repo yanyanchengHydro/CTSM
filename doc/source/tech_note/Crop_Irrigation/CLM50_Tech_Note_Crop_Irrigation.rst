@@ -548,8 +548,9 @@ A fraction (determined by :math:`biofuel\_harvfrac`) of leaf/livestem C and N fr
 (Equation :eq:`25.9`, Equation :eq:`25.10`, Equation :eq:`25.12`, and Equation :eq:`25.13`),
 with the remaining portions go the litter pools (Equation :eq:`20.14)`, Equation :eq:`25.11`, and Equation :eq:`25.14`).
 Putting live stem C and N into the litter and biofuel pools is in contrast to the approach for unmanaged PFTs which
-puts live stem C and N into dead stem pools first. Leaf and root C and N pools
-are routed to the litter pools in the same manner as natural vegetation.
+puts live stem C and N into dead stem pools first. 
+Leaf C and N pools are routed to the little and biofuel pools, contrast to that of unmanaged PFTs which put leaf C and N to litter pools only.
+Root C and N pools are routed to the litter pools in the same manner as natural vegetation.
   
 .. math::
    :label: 25.9
